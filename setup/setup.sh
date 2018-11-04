@@ -73,12 +73,13 @@ if [[ $EUID != 0 ]]; then
 fi
 
 # copy necessary files
-for dir in ./files/*; do
-	for file in $dir/*; do
-		parent="$(basename "$file")"
-		echo -e "$parent"
-	done
+for source in ./files/*; do
+	dest="/$(basename "$source")"
+	cp -r $source/* $dest
+	screen_output "status" "copied $source to $dest"
 done
+
+screen_output "update" "finished copying necessary files"
 
 
 
