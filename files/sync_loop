@@ -1,0 +1,87 @@
+#!/bin/bash -eu
+
+
+LOGFILE=/tmp/syncloop.log
+PFSENSE_HOST_NAME="PFSense.lab.sys"
+
+
+
+###################################################
+########	Functions
+###################################################
+
+
+ function clear_log () {
+  rm "$LOGFILE" > /dev/null 2>&1 || echo ""
+ }
+
+
+ function log () {
+   echo "$( date )" >> "$LOGFILE"
+   echo "$1" >> "$LOGFILE"
+ }
+
+
+ function check_wifi_connection () {
+   local reachable=true
+   ping -q -w 1 -c 1 "$PFSENSE_HOST_NAME" > /dev/null 2>&1 || reachable=false
+   if [ "$reachable" = false ]
+   then
+     false
+     return
+   fi
+   true
+ }
+
+
+  function wait_for_wifi_availability () {
+   log "Waiting for wifi to be reachable..."
+   while [ true ]
+   do
+     if check_wifi_connection
+     then
+       log "Wifi is reachable."
+       break
+     fi
+     sleep 1
+   done
+ }
+
+
+ function sync_folders () {
+   log "Syncing..."
+   /root/bin/sync_folders
+   log "Finished syncing."
+ }
+
+
+ function wait_for_wifi_to_be_unreachable () {
+   log "Waiting for wifi to be unreachable..."
+   while [ true ]
+     do
+       if ! check_wifi_connection
+       then
+         log "Wifi is unreachable."
+         break
+       fi
+       sleep 1
+   done
+ }
+
+
+ clear_log
+
+
+ log "Starting..."
+
+
+ while [ true ]
+ do
+   wait_for_wifi_availability
+
+   sync_folders
+
+   wait_for_wifi_to_be_unreachable
+
+   sync_folders
+ done

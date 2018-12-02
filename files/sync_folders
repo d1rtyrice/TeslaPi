@@ -1,0 +1,171 @@
+#!/bin/bash -eu
+
+LOGFILE="/tmp/sync_folders.log"
+
+archiveDir="/mnt/tesla_share/Dashcam/saved"
+camRecentDir="/mnt/tesla_share/Dashcam/recent"
+musicDir="/mnt/tesla_share/Music"
+teslaCamDir="/mnt/usb_share/TeslaCam"
+teslaMusicDir="/mnt/usb_share/TeslaMusic"
+
+
+
+###########################################################
+##################	Functions
+###########################################################
+
+ function log () {
+	echo "$( date )" >> "$LOGFILE"
+	echo "$1" >> "$LOGFILE"
+ }
+
+
+ function mount_mountpoint () {
+   local mount_point="$1"
+   log "Mounting $mount_point..."
+
+   local mounted=true
+   mount "$mount_point" >> "$LOGFILE" 2>&1 || mounted=false
+   if [ "$mounted" = true ]
+   then
+     log "Mounted $mount_point."
+     true
+     return
+   else
+     log "Failed to mount $mount_point."
+     false
+     return
+   fi
+ }
+
+
+ function ensure_mountpoint_is_mounted () {
+   local mount_point="$1"
+   local mount_exists=true
+
+   findmnt --mountpoint "$mount_point" > /dev/null || mount_exists=false
+
+   if [ "$mount_exists" = true ]
+   then
+     log "$mount_point is already mounted."
+   else
+     mount_mountpoint "$mount_point"
+   fi
+ }
+
+
+ function move_clips_to_archive () {
+   log "Moving saved clips to archive..."
+   for saved in /mnt/usb_share/TeslaCam/saved*.mp4; do
+     [ -e "$saved" ] || continue
+     log "Moving $saved ..."
+     mv -- "$saved" ${archiveDir} >> "$LOGFILE" 2>&1
+     log "Moved $saved."
+   done
+
+   log "Moving recent clips to archive..."
+   for recent in /mnt/usb_share/TeslaCam/recent*.mp4; do
+     [ -e "$recent" ] || continue
+     log "Copying $recent ..."
+     cp -n "$recent" ${camRecentDir} >> "$LOGFILE" 2>&1
+     log "Copied $recent."
+   done
+
+   log "Finished moving clips to archive."
+
+   log "Flushing old recordings..."
+   find ${camRecentDir} -mtime +5 -type f -delete
+   log "Flushed $camRecentDir."
+
+   log "Flushing any .REC files..."
+   for REC in /mnt/usb_share/FSCK*.REC; do
+     [ -e "$REC" ] || continue
+     log "Deleting $REC ..."
+     rm "$REC"
+     log "$REC deleted."
+   done
+   log ".REC flushing complete."
+ }
+
+
+ function sync_music_directory () {
+   log "Syncing Music..."
+   rsync -avu --no-o --no-g --delete ${musicDir}/ ${teslaMusicDir} >> "$LOGFILE" 2>&1
+   log "Syncing Complete."
+ }
+
+
+ function disconnect_usb_from_host () {
+   log "Disconnecting usb from host..."
+   modprobe -r g_mass_storage
+   log "Disconnected usb from host."
+ }
+
+
+ function mount_usb_drive_locally () {
+   log "Mounting usb locally..."
+   mount /mnt/usb_share
+   log "Mounted usb locally."
+ }
+
+
+ function ensure_directory_exists () {
+   log "Ensuring ${1} directory exists..."
+	if [[ ! -d ${1} ]]; then
+		mkdir -p ${1}
+		chmod 777 ${1}
+	fi
+   log "Ensured ${1} exists."
+ }
+
+
+ function ensure_usb_share_is_mounted () {
+   log "Ensuring usb share is mounted..."
+   ensure_mountpoint_is_mounted /mnt/usb_share
+   log "Ensured usb share is mounted."
+ }
+
+
+ function unmount_usb_share () {
+   log "Unmounting usb share..."
+   umount /mnt/usb_share
+   log "Unmounted usb share."
+ }
+
+
+ function connect_usb_to_host() {
+   log "Connecting usb to host..."
+   modprobe g_mass_storage
+   log "Connected usb to host."
+ }
+
+
+##############################
+#######		Code
+##############################
+
+log "Starting..."
+
+ensure_directory_exists ${archiveDir}
+
+ensure_directory_exists ${camRecentDir}
+
+ensure_directory_exists ${musicDir}
+
+disconnect_usb_from_host
+
+ensure_usb_share_is_mounted
+
+ensure_directory_exists ${teslaCamDir}
+
+ensure_directory_exists ${teslaMusicDir}
+
+move_clips_to_archive
+
+sync_music_directory
+
+unmount_usb_share
+
+connect_usb_to_host
+
+
